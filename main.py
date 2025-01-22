@@ -162,7 +162,7 @@ async def download_url(url: str, out: str, info: str):
 
 # 获取用户下载路径
 def get_user_download_dir_path():
-    print("视频保存在磁盘根目录的 /BiliStealer 文件夹内")
+    print("视频保存在磁盘根目录的 /BiliThief 文件夹内")
     print("请输入要保存在哪个磁盘盘符,输入CDEF等单个字母,默认D盘:")
 
     user_download_disk = None
@@ -179,10 +179,10 @@ def get_user_download_dir_path():
                 user_download_disk = "D"
             elif user_download_disk.upper() not in ["C", "D", "E", "F", "G", "H"]:
                 user_download_disk = "D"
-            os.makedirs(user_download_disk + ":/BiliStealer/", exist_ok=True)
-            print("[√] 视频将保存在: " + user_download_disk + ":/BiliStealer/" + " =============================")
-            logging.info('userTargetDir: ' + user_download_disk + ":/BiliStealer/")
-            return user_download_disk + ":/BiliStealer/"
+            os.makedirs(user_download_disk + ":/BiliThief/", exist_ok=True)
+            print("[√] 视频将保存在: " + user_download_disk + ":/BiliThief/" + " =============================")
+            logging.info('userTargetDir: ' + user_download_disk + ":/BiliThief/")
+            return user_download_disk + ":/BiliThief/"
         except:
             print("磁盘盘符输入错误,请重新输入")
             logging.exception("磁盘盘符输入错误,请重新输入")
@@ -206,7 +206,7 @@ def download_video(video_arr, user_download_dir_path, avid_or_bvid=1):
     item_index = 1
     for single_video in video_arr:
         try:
-            print("[△] " + str(item_index) + " in " + str(len(video_arr)) + " =============================")
+            print("[△] 正在下载视频: " + str(item_index) + " in " + str(len(video_arr)) + " =============================")
             logging.info(str(item_index) + "in total" + str(len(video_arr)))
             single_title = single_video.get('title').replace("</em>", "")
             single_title = single_title.replace("<em>", "")
@@ -218,7 +218,7 @@ def download_video(video_arr, user_download_dir_path, avid_or_bvid=1):
             illegal_chars = r'[<>:"\\|?*]'
             single_title = re.sub(illegal_chars, '', single_title)
 
-            print("[△] 正在下载: " + single_title)
+            print("[△] 正在下载视频: " + single_title)
             print("AID: " + str(single_video.get('aid')) + "     BVID: " + single_video.get('bvid'))
             print("时长: " + single_video.get('duration') + "(<10分钟的约下载3分内,10-60分的约下载5-8分钟,更长的视频约需要1/10的时间下载!!!请耐心等待!)")
             logging.info(single_title)
@@ -240,61 +240,73 @@ def download_video(video_arr, user_download_dir_path, avid_or_bvid=1):
                 logging.info("bvid download")
                 v = video.Video(bvid=single_video.get('bvid'), credential=credential)
 
-            # 获取视频下载链接
-            download_url_data = sync(v.get_download_url(0))
-            # 解析视频下载信息
-            detecter = video.VideoDownloadURLDataDetecter(data=download_url_data)
-            streams = detecter.detect_best_streams()
-            # 有 MP4 流 / FLV 流两种可能
-            if detecter.check_flv_stream() == True:
-                logging.info("flv")
-                # FLV 流下载
-                sync(download_url(streams[0].url, user_download_dir_path + "flv_temp.flv", "FLV 音视频流"))
-                # 转换文件格式
-                cmd = f'{FFMPEG_PATH} -y -i "' + user_download_dir_path + 'flv_temp.flv" -c copy "' + user_download_dir_path + single_title + '.mp4" '
-                logging.info(cmd)
-                # os.system(f'{FFMPEG_PATH} -y -i "' + user_download_dir_path + 'flv_temp.flv"  "' + user_download_dir_path + single_title + '.mp4" ')
-                subprocess.call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            page_info = sync(v.get_pages())
 
-                # 删除临时文件
-                try:
-                    os.remove(user_download_dir_path + "flv_temp.flv")
-                except:
-                    logging.exception("delete tmp file error")
-            else:
-                logging.info("m4s")
-                # MP4 流下载
-                sync(download_url(streams[0].url, user_download_dir_path + "video_temp.m4s", "视频流"))
+            if len(page_info) > 1:
+                print("视频存在多个分P,将分别下载!!!")
 
-                is_has_voice = None
-                try:
-                    sync(download_url(streams[1].url, user_download_dir_path + "audio_temp.m4s", "音频流"))
-                    is_has_voice = True
-                except:
-                    logging.exception("no voice")
-                    is_has_voice = False
-                # 混流
-                # os.system(f'{FFMPEG_PATH} -y -i "' + user_download_dir_path + 'video_temp.m4s" -i "' + user_download_dir_path + 'audio_temp.m4s" -vcodec copy -acodec copy "' + user_download_dir_path + single_title + '.mp4" ')
+            for p_count in range(len(page_info)):
+                if len(page_info) > 1:
+                    print("正在下载分P: " + str(p_count + 1) + " in " + str(len(page_info)))
 
-                if is_has_voice:
-                    cmd = f'{FFMPEG_PATH} -y -i "' + user_download_dir_path + 'video_temp.m4s" -i "' + user_download_dir_path + 'audio_temp.m4s" -vcodec copy -acodec copy "' + user_download_dir_path + single_title + '.mp4" '
+                # 获取视频下载链接
+                download_url_data = sync(v.get_download_url(p_count))
+                # 解析视频下载信息
+                detecter = video.VideoDownloadURLDataDetecter(data=download_url_data)
+                streams = detecter.detect_best_streams()
+                # 有 MP4 流 / FLV 流两种可能
+                if detecter.check_flv_stream() == True:
+                    logging.info("flv")
+                    # FLV 流下载
+                    sync(download_url(streams[0].url, user_download_dir_path + "flv_temp.flv", "FLV 音视频流"))
+                    # 转换文件格式
+                    cmd = f'{FFMPEG_PATH} -y -i "' + user_download_dir_path + 'flv_temp.flv" -c copy "' + user_download_dir_path + single_title + "_" + str(
+                        p_count) + '.mp4" '
                     logging.info(cmd)
+                    # os.system(f'{FFMPEG_PATH} -y -i "' + user_download_dir_path + 'flv_temp.flv"  "' + user_download_dir_path + single_title + '.mp4" ')
+                    subprocess.call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+                    # 删除临时文件
+                    try:
+                        os.remove(user_download_dir_path + "flv_temp.flv")
+                    except:
+                        logging.exception("delete tmp file error")
                 else:
-                    print("[×] 该视频没有音频流")
-                    cmd = f'{FFMPEG_PATH} -y -i "' + user_download_dir_path + 'video_temp.m4s"  -vcodec copy  "' + user_download_dir_path + single_title + '.mp4" '
-                    logging.info(cmd)
+                    logging.info("m4s")
+                    # MP4 流下载
+                    sync(download_url(streams[0].url, user_download_dir_path + "video_temp.m4s", "视频流"))
 
-                subprocess.call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                    is_has_voice = None
+                    try:
+                        sync(download_url(streams[1].url, user_download_dir_path + "audio_temp.m4s", "音频流"))
+                        is_has_voice = True
+                    except:
+                        logging.exception("no voice")
+                        is_has_voice = False
+                    # 混流
+                    # os.system(f'{FFMPEG_PATH} -y -i "' + user_download_dir_path + 'video_temp.m4s" -i "' + user_download_dir_path + 'audio_temp.m4s" -vcodec copy -acodec copy "' + user_download_dir_path + single_title + '.mp4" ')
 
-                # 删除临时文件
-                try:
-                    os.remove(user_download_dir_path + "video_temp.m4s")
-                    os.remove(user_download_dir_path + "audio_temp.m4s")
-                except:
-                    logging.exception("delete tmp file error")
-                    pass
-            item_index = item_index + 1
-            print('[√] 已下载：' + single_title + " =============================")
+                    if is_has_voice:
+                        cmd = f'{FFMPEG_PATH} -y -i "' + user_download_dir_path + 'video_temp.m4s" -i "' + user_download_dir_path + 'audio_temp.m4s" -vcodec copy -acodec copy "' + user_download_dir_path + single_title + "_" + str(
+                            p_count) + '.mp4" '
+                        logging.info(cmd)
+                    else:
+                        print("[×] 该视频没有音频流")
+                        cmd = f'{FFMPEG_PATH} -y -i "' + user_download_dir_path + 'video_temp.m4s"  -vcodec copy  "' + user_download_dir_path + single_title + "_" + str(
+                            p_count) + '.mp4" '
+                        logging.info(cmd)
+
+                    subprocess.call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+                    # 删除临时文件
+                    try:
+                        os.remove(user_download_dir_path + "video_temp.m4s")
+                        os.remove(user_download_dir_path + "audio_temp.m4s")
+                    except:
+                        logging.exception("delete tmp file error")
+                        pass
+                item_index = item_index + 1
+                print('[√] 已下载：' + single_title + "_" + str(p_count) + " =============================")
 
         except:
             logging.exception("download error")
@@ -304,7 +316,7 @@ def download_video(video_arr, user_download_dir_path, avid_or_bvid=1):
 def user_download_link_video():
     # 用户输入盘符
     _user_download_dir_path = get_user_download_dir_path()
-    logging.info('UserDownloadSize: ' + str(user_download_size))
+    logging.info('UserDownloadDir: ' + str(_user_download_dir_path))
 
     print("[△] 请确认视频地址为AV还是BV =============================")
     print("AV请选择1:(例如https://www.bilibili.com/video/av113859801122834)")
@@ -372,6 +384,7 @@ if __name__ == "__main__":
         # 获取第一页信息及用户输入下载信息
         search_result_raw_json = get_search_result_raw(user_search_word)
         # print(search_result_raw_json)
+
         user_download_size = get_user_download_size(search_result_raw_json)
         logging.info('UserDownloadSize: ' + str(user_download_size))
         if user_download_size > 0:
